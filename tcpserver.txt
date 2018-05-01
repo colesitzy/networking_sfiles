@@ -1,0 +1,260 @@
+SERVER BELOW
+ 
+#include <iostream>
+#include <string>
+ 
+#include <stdio.h>
+#include <stdlib.h>
+#ifdef __linux__
+#include <unistd.h>
+#endif
+#include <getopt.h>
+#include <ctype.h>
+#include <memory.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
+#include <assert.h>
+#include <fstream>
+ 
+using namespace std;
+ 
+int main(int argc, char *argv[])
+{
+    int tcpSock;
+    int portNum = 5077;      // this is the defaulted port number for the socket.
+                             //  string filepath; // this will be the filepath for the text that we want to send to the server.
+    string ip = "127.0.0.1"; // this will be the default address for the client.
+                             // const int BUFFER_SIZE = 10960;
+    // int fileSize = 0;
+    // unsigned char buffer[BUFFER_SIZE];
+    struct sockaddr_in server;
+    struct sockaddr_in client;
+    socklen_t length = sizeof(server);
+ 
+    // make sure we clear our buffer of any garbage values.
+ 
+    memset((void *)&server, 0, sizeof(server));
+ 
+    // initialize the socket by opening it
+ 
+    int menu;
+ 
+    while ((menu = getopt(argc, argv, "hp:")) != -1)
+    {
+        switch (menu)
+        {
+ 
+        case 'h':
+            cerr << argv[0] << "options:" << endl;
+            cerr << "   -h displays help" << endl;
+            cerr << "   -p port_number ... defaults to 5077" << endl;
+            exit(0);
+ 
+        case 'p':
+            portNum = atoi(optarg);
+            break;
+        }
+    }
+ 
+    cout << "Server bound of port " << portNum << endl;
+ 
+    tcpSock = socket(AF_INET, SOCK_STREAM, 0); // sock stream is for TCP protocol, compared to SOCK_DGRAM
+ 
+    if (tcpSock < 0)
+    {
+        printf("Server failed to open socket");
+        exit(1);
+    }
+ 
+    memset(&server, 0, sizeof(server));
+ 
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = htonl(INADDR_ANY);
+    server.sin_port = htons(portNum);
+ 
+    if (bind(tcpSock, (const struct sockaddr *)&server, socklen_t(sizeof(server))) < 0)
+    {
+        close(tcpSock);
+        perror("Server bind failed:");
+        exit(2);
+    }
+ 
+    // now we listen for a client trying to connect.
+ 
+    int listenForClient = listen(tcpSock, 2);
+ 
+    if (listenForClient < 0)
+    {
+        perror("Server listen failed:");
+        exit(3);
+    }
+ 
+    while (true)
+    {
+        // now we accept a connect from a client
+ 
+        int acceptSock = accept(tcpSock, (struct sockaddr *)&client, &length);
+ 
+        if (acceptSock < 0)
+        {
+            perror("Server accept failed:");
+            exit(4);
+        }
+ 
+        cout << "Server received connection from " << inet_ntoa(client.sin_addr) << " on port " << client.sin_port << endl;
+ 
+        char *buffer = (char *)malloc(sizeof(long));
+ 
+        int bytes_rec = read(acceptSock, buffer, sizeof(long));
+ 
+        long size;
+        memcpy(&size, buffer, sizeof(long));
+ 
+       // cout << size << endl;
+ 
+        bool bigEndian = false;
+ 
+        if (1 == htonl(1))
+        {
+            bigEndian = true;
+        }
+        else
+        {
+            ((uint64_t)ntohl((size)&0xFFFFFFFF) << 32 | ntohl((size) >> 32));
+        }
+ 
+        if (bytes_rec < 0)
+        {
+            perror("Error reading from socket");
+            exit(0);
+        }
+ 
+        free(buffer);
+ 
+        buffer = (char *)malloc(size);
+        memset(buffer, 0, size);
+ 
+        int fileSize = read(acceptSock, buffer, size);
+ 
+        if (fileSize < 0)
+        {
+            perror("Server read 2 is wrong");
+            exit(0);
+        }
+ 
+         cout << "Server expecting to receive a file with " << fileSize << " bytes." << endl;
+ 
+   // cout << "Bytes received from client " << fileSize << " bytes." << endl;
+        // this is where we do all of the crunching for bytes_rec before we write back to the client.
+ 
+        // convert all letters to lowercase
+ 
+        for (int i = 0; i < fileSize; i++)
+        {
+            buffer[i] = tolower(buffer[i]);
+        }
+ 
+        // now we can iterate through our buffer and increment our counters
+ 
+        int A_counter = 0;
+        int E_counter = 0;
+        int I_counter = 0;
+        int O_counter = 0;
+        int U_counter = 0;
+        int lineCounter = 0;
+ 
+        for (int i = 0; i < fileSize; i++) // bytes_rec stands for total number of bytes sent from sever
+        {
+            A_counter += !('a' ^ buffer[i]);
+            E_counter += !('e' ^ buffer[i]);
+            I_counter += !('i' ^ buffer[i]);
+            O_counter += !('o' ^ buffer[i]);
+            U_counter += !('u' ^ buffer[i]);
+            lineCounter += !('\n' ^ buffer[i]);
+        }
+ 
+        string report = "";
+ 
+        report += "Lines: ";
+        report += to_string(lineCounter);
+        report += "\n";
+ 
+        report += "A_counter: ";
+        report += to_string(A_counter);
+        report += "\n";
+ 
+        report += "E_counter: ";
+        report += to_string(E_counter);
+        report += "\n";
+ 
+        report += "I_counter: ";
+        report += to_string(I_counter);
+        report += "\n";
+ 
+        report += "O_counter: ";
+        report += to_string(O_counter);
+        report += "\n";
+ 
+        report += "U_counter: ";
+        report += to_string(U_counter);
+        report += "\n";
+ 
+        // cout << A_counter << endl;
+        // cout << E_counter << endl;
+        // cout << I_counter << endl;
+        // cout << O_counter << endl;
+        // cout << U_counter << endl;
+ 
+        // here is where we can load the information that to have to a buffer.
+ 
+        //printf("Number of lines: %d \n Number of A: %d \n Number of E: %d \n Number of I: %d \n Number of O: %d \n Number of U: %d \n", lineCounter, A_counter, E_counter, I_counter, O_counter, U_counter);
+ 
+        //  char * reportBuffer = (char *)malloc(strlen(reportOutput));
+        //
+        //  for (size_t i = 0; i < A_counter; i++)
+        //
+ 
+        char *replyBuf = (char *)malloc(sizeof(long)); // +1 for the null terminator
+ 
+        memset(replyBuf, 0, sizeof(long));
+        long reportlength = report.size();
+ 
+        if (bigEndian == false)
+        {
+            ((uint64_t)htonl((reportlength)&0xFFFFFFFF) << 32 | htonl((reportlength) >> 32));
+        }
+ 
+        memcpy(replyBuf, &reportlength, sizeof(long));
+ 
+        int reportByte = send(acceptSock, replyBuf, sizeof(long), 0);
+ 
+        if (reportByte < 0)
+        {
+            perror("Report Byte send is wrong");
+            exit(0);
+        }
+ 
+        free(replyBuf);
+ 
+        replyBuf = (char *)malloc(report.size());
+ 
+        strcpy(replyBuf, report.c_str());
+ 
+        int bytes_rec2 = send(acceptSock, replyBuf, report.size(), 0);
+ 
+        if (bytes_rec2 < 0)
+        {
+            perror("Error writing to socket");
+            exit(0);
+        }
+ 
+        // cout << "Server sent " << bytes_rec2 << " bytes." << endl;
+        cout << "Server about to send " << bytes_rec2 << " bytes to client at " << inet_ntoa(client.sin_addr) << endl;
+        cout << "Server closing connection with: " << inet_ntoa(client.sin_addr) << endl;
+        close(acceptSock);
+    }
+    return 0;
+}

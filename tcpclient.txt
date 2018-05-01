@@ -1,0 +1,268 @@
+#include <iostream>
+#include <string>
+#include <stdio.h>
+#include <stdlib.h>
+#ifdef   __linux__
+#include <unistd.h>
+#endif
+#include <getopt.h>
+#include <memory.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <assert.h>
+#include <sys/unistd.h>
+#include <errno.h>
+#include <sys/fcntl.h>
+#include <iostream>
+#include <fstream>
+ 
+#define SERVER_IP "127.0.0.1"
+#define PORT_NUMBER 5077
+ 
+using namespace std;
+ 
+long get_file_size(string filename, int &file_descriptor);
+long byte_order_64bit(long &number);
+ 
+int main(int argc, char * argv[])
+{
+    //VARIABLES
+    //---------------------------------
+    ifstream infile;
+    long file_size;
+ 
+    const size_t BUFFER_SIZE = 1024;
+    unsigned char buffer[BUFFER_SIZE]; 
+ 
+    struct sockaddr_in server_sockaddr;
+    struct sockaddr_in client_sockaddr;
+   
+    int tcp_socket;
+    int file_descriptor;
+   
+    string server_ip = SERVER_IP;
+    int port_number = PORT_NUMBER;
+    string path_to_file = "";
+ 
+    socklen_t l = sizeof(client_sockaddr);
+    //---------------------------------
+   
+ 
+    memset((void *) &server_sockaddr, 0, sizeof(server_sockaddr));
+   
+ 
+    //OPTIONS
+    //---------------------------------
+    int c;
+    while((c = getopt(argc, argv, "hdf:s:p:")) != -1)
+    {
+        switch(c)
+        {
+            case 'h':
+                                cout << "options:" << endl;
+                                cout << "     -h displays help" << endl;
+                cout << "     -d debug mode" << endl;
+                cout << "     -f file to send (must be text file)" << endl;
+                                cout << "     -s server_address ... defaults to 127.0.0.1" << endl;
+                                cout << "     -p port_number ... defaults tp 5077" << endl;
+                                exit(0);
+ 
+                        //case 'd':
+           
+            case 'f':
+                path_to_file = string(optarg);
+                break;
+               
+                        case 's':
+                                server_ip = string(optarg);
+                                break;
+ 
+                        case 'p':
+                                port_number = atoi(optarg);
+                                break;
+ 
+        }
+   
+    }
+    //----------------------------------
+   
+    if(path_to_file == "")
+    {
+        cerr << "-f must be supplied" << endl;
+        exit(1);
+    }
+ 
+    struct hostent *ip = gethostbyname(server_ip.c_str());
+ 
+    if(ip == 0)
+    {
+        cerr << "Client failed in gethostbyname()" << endl;
+        exit(3);
+    }
+ 
+   
+ 
+    //OPENING SOCKET
+    //-----------------------------------
+    tcp_socket = socket(AF_INET, SOCK_STREAM, 0);
+ 
+    if(tcp_socket < 0)
+    {
+        perror("Client failed to open socket");
+        close(tcp_socket);
+        exit(2);
+    }
+ 
+    server_sockaddr.sin_family = AF_INET;
+    server_sockaddr.sin_port = htons(port_number);
+ 
+    memmove(&server_sockaddr.sin_addr, ip->h_addr, ip->h_length);
+    //------------------------------------
+   
+ 
+    //CONNECTING
+    //------------------------------------
+    int connect_num;
+    connect_num = connect(tcp_socket,(const sockaddr*) &server_sockaddr, l);
+   
+    if(connect_num < 0)
+    {
+        perror("Client connection failure:");
+        close(tcp_socket);
+        exit(4);
+    }
+    //------------------------------------
+ 
+ 
+    //getting size of the file
+    file_size = get_file_size(path_to_file, file_descriptor);
+    long size_copy = file_size;
+   
+    //making sure the size is in right byte order before we send it
+    byte_order_64bit(file_size);
+   
+    //SENDING SIZE OF THE FILE
+    //------------------------------------
+    char *temp_buffer = new char[sizeof(long)];
+    memset(temp_buffer,0,sizeof(long));
+    memcpy(temp_buffer,&file_size,sizeof(long));
+ 
+    int bytes_sent_size = send(tcp_socket, temp_buffer, sizeof(long),0);
+ 
+    if(bytes_sent_size != sizeof(long))
+    {
+        cerr << "Client sent wrong number of bytes for file length: " << bytes_sent_size << endl;
+        exit(5);
+    }
+ 
+    delete[] temp_buffer;
+    //------------------------------------
+   
+ 
+    //SENDING THE FILE
+    //------------------------------------
+    char *buffer_temp = new char[size_copy];
+    lseek(file_descriptor, 0, SEEK_SET);
+    int r = read(file_descriptor, buffer_temp, size_copy);
+   
+    if(r < 0)
+    {
+        cerr << "File read failed" << endl;
+        close(tcp_socket);
+        exit(6);
+    }
+    else
+    {
+        cout << "Client read input file: " << path_to_file << " and closed it" << endl;
+    }
+   
+    int bytes_sent_file = send(tcp_socket, buffer_temp, size_copy, 0);
+ 
+    if(bytes_sent_file != size_copy)
+    {
+        cerr << "Client sent wrong number of bytes in sending file: " << bytes_sent_file << endl;
+        exit(7);
+    }
+    else
+    {
+        cout << "Client sent file with: " << size_copy << " bytes" << endl;
+    }
+   
+    close(file_descriptor);
+    delete[] buffer_temp;
+    //------------------------------------
+ 
+   
+    //RECEIVING THE SIZE
+    //------------------------------------
+    char *buffer_t = new char[sizeof(long)];
+    int bytes_received_size = recv(tcp_socket, buffer_t, sizeof(long) ,0);
+    long size_expected;
+    memcpy(&size_expected, buffer_t, sizeof(long));
+   
+    if(bytes_received_size != sizeof(long))
+    {
+        cerr << "Client received wrong number of bytes for size of long expected " << sizeof(long) << " bytes got " << bytes_received_size << " bytes" << endl;
+        close(tcp_socket);
+        exit(8);
+    }
+    else
+    {
+        cout << "Client ready to receive length of " << size_expected << " bytes" << endl;
+    }
+   
+   
+    delete[] buffer_t;
+    //------------------------------------
+ 
+    //RECEIVING THE FILE
+    //------------------------------------
+    char *buffer_tp = new char[size_expected];
+    int bytes_received_file = recv(tcp_socket, buffer_tp, size_expected, 0);
+   
+    if(bytes_received_file != size_expected)
+    {
+        cerr << "Client received wrong number of bytes in return. Expected " << size_expected << " bytes but got " << bytes_received_file << " bytes" << endl;
+        close(tcp_socket);
+        exit(9);
+    }
+   
+    cout << buffer_tp << endl;
+   
+    delete[] buffer_tp;
+    //------------------------------------
+ 
+                   
+}
+ 
+long get_file_size(string filename, int &file_descriptor)
+{
+    file_descriptor = open(filename.c_str(), O_RDONLY);
+ 
+    if(file_descriptor == 0)
+    {
+        perror("Client could not open file for reading:");
+        //close(tcp_socket);
+        exit(1);
+    }
+ 
+    int size = lseek(file_descriptor, 0, SEEK_END);
+    return size;
+}
+ 
+long byte_order_64bit(long &number)
+{
+    if(1 == htonl(1))
+    {
+        //big_endian == true;
+    }
+ 
+    else
+    {
+        ((uint64_t)htonl((number) & 0xFFFFFFFF) << 32 | htonl((number) >> 32));
+   
+    }
+ 
+}

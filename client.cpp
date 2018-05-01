@@ -1,84 +1,99 @@
-#include <stdlib.h>
+
+
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <netdb.h>
 #include <sys/socket.h>
-#include "packets.hpp"
+#include <netinet/in.h>
 #include <iostream>
-#include <arpa/inet.h>
-#include <unistd.h>
 #include <fstream>
-
+#include <unistd.h>
 
 using namespace std;
 
-void initializePacket(CPacket cp){
-	cp.convo_id = 0;
-	cp.seq_num = 0;
-	cp.op_code = 0;
-	cp.msg_len = 0;
-	cp.window_index = 0;
+int conn(char *host, int port,  char *filepath);
+void disconn(void);
+ifstream inFile;
 
+main(int argc, char **argv)
+{
+	extern char *optarg;
+	extern int optind;
+	int c, err = 0;
+	char *prompt = 0;
+	int port = 5077;
+	char *host = "127.0.0.1";	/* default: this host */
+	char *filepath;
+	static char usage[] = "usage: %s [-d] [-h serverhost] [-p port]\n";
+	bool debugOn = false;
 
+	while ((c = getopt(argc, argv, "h::d:fs:p:")) != -1){
+		switch (c) {
+		case 'h':
+			cout << "Options:" << endl;
+			cout << "-h displays help" << endl;
+			cout << "-f file to send (must be a text file)" << endl;
+			cout << "-s server_address ... defaults to 127.0.0.1" << endl;
+			cout << "-p port_number ... defaults to 5077" << endl;
+			return 0;
+			break;
+		case 'd':
+			cout << "debug turned on" << endl;
+			debugOn = true;
+		case 'f':
+			filepath = optarg;
+			inFile.open(filepath);
+			if(inFile.good() == false)
+			{
+				cout << "bad filepath" << endl;
+				return 1;
+			}
+			break;
+		case 's':
+			host = optarg;
+			cout << "Server address set to " << host << endl;
+			break;
+		case 'p':  /* port number */
+			port = atoi(optarg);
+			if (port < 1024 || port > 65535) {
+				fprintf(stderr, "invalid port number: %s\n", optarg);
+				err = 1;
+			}
+			break;
+
+		}
+	}
+
+	printf("connecting to %s, port %d\n", host, port);
+
+	if (!conn(host, port, filepath))    /* connect */
+		exit(1);   /* something went wrong */
+
+	disconn();    /* disconnect */
+	return 0;
 }
 
-int main(int argc, char **argv)
+int fd;
+
+
+int conn(char *host, int port, char *filepath )
 {
-	struct sockaddr_in myaddr, remaddr;
-	int fd, slen=sizeof(remaddr);
-	char *server = "127.0.0.1";
-	char buf[CP_BUFFER_SIZE];
-	int c = 0;
-	int port = PORT_NUMBER;
-	int window_size = DEF_WINDOW_SIZE;
-	string filepath;
-	//extern char *optarg;
-	//extern int optint;
-	//cout <<" check" <<endl;
+	ifstream inFile;
+	String readfile;
+	struct hostent *hp;
+	unsigned int alen;
+	struct sockaddr_in myaddr;
+	struct sockaddr_in servaddr;
 
-	//add file compatability
-	while ((c = getopt(argc, argv, "h::f:n:s:p:")) !=-1){
-	switch (c) {
 
-	case 'h':
-		cout << ("clientoptions:") << endl;
-		cout << ("-f set filename") <<endl;
-		cout << ("-h displays help") << endl;
-		cout << ("-n window size ... defaults to 8") << endl;
-		cout << ("-s server address ... defaults to 127.0.0.1") << endl;
-		cout << ("-p port number ... defaults to 9990") << endl;
-		break;
-	case 'f':
-		filepath = optarg;
-	//	ifstream in(optarg);
-	//	if(in.is_open()){
-	//		infile = in;
-	//		cout << "file is good" << endl;
-	//	}
-	//	else{
-	//	cout << "bad file path" << endl;
 
-		break;
-	case 'n':
-		window_size = atoi(optarg);
-		break;
-	case 's':
-		server = optarg;
-		cout << "server address set to" << optarg << endl;
-		break;
-	case 'p':
-		port = atoi(optarg);
-		if (port < 1024 || port > 65535) {
-			cout <<"" << port << " is an invalid port number" << endl;
-		}
-		break;
+
+	if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+		perror("cannot create socket");
+		return 0;
 	}
-//	cout<<"Check one"<<endl;
-//creates socket
-	if ((fd = socket(AF_INET, SOCK_DGRAM, 0))!=-1)
-	printf("socket created\n");
-	else
-	cout << "failed to  create socket"<< endl;
+
 
 	memset((char *)&myaddr, 0, sizeof(myaddr));
 	myaddr.sin_family = AF_INET;
@@ -89,76 +104,46 @@ int main(int argc, char **argv)
 		perror("bind failed");
 		return 0;
 	}
-	else{
-	cout << "bind successful" << endl;
+
+        alen = sizeof(myaddr);
+        if (getsockname(fd, (struct sockaddr *)&myaddr, &alen) < 0) {
+                perror("getsockname failed");
+                return 0;
+        }
+	printf("local port number = %d\n", ntohs(myaddr.sin_port));
+
+
+	memset((char*)&servaddr, 0, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(port);
+
+	hp = gethostbyname(host);
+	if (!hp) {
+		fprintf(stderr, "could not obtain address of %s\n", host);
+		return 0;
 	}
 
 
 
-	//set where the packets are going
-	//inet_aton converts IP to binary
 
-	memset((char *) &remaddr, 0, sizeof(remaddr));
-	remaddr.sin_family = AF_INET;
-	remaddr.sin_port = htons(port);
-	if (inet_aton(server, &remaddr.sin_addr)==0) {
-		fprintf(stderr, "inet_aton() failed\n");
-		exit(1);
+
+
+
+	long filelen = readfile.lenght
+
+	
+	memcpy((void *)&servaddr.sin_addr, hp->h_addr_list[0], hp->h_length);
+
+	if (connect(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0) {
+		perror("connect failed");
+		return 0;
 	}
-
-
-
-	//build leaving packet
-
-
-	CPacket outpacket;
-
-	initializePacket(outpacket);
-	//ifstream infile(filepath);
-	//if(infile.is_open()){
-	//sequence loop
-	//z = 0;
-	//while(infile.get){
-	//outpacket.msg[z] = infile.get;
-
-	//slidingPaneLoop
-		for(int i=0; i < window_size; i++) {
-			outpacket.seq_num = window_size;
-		//set cpacket op code
-			if(i==0){
-				outpacket.op_code = COP_CODE_START;
-			}
-
-			else if(i==(window_size-1)){
-				outpacket.op_code = COP_CODE_FINISH;
-			}
-			else{
-				outpacket.op_code = COP_CODE_DATA;
-			}
-
-		//send
-
-//		if (sendto(fd, outpacket, 133, 0, (struct sockaddr *)&remaddr, slen)==-1)
-//			perror("sendto");
-
-		if (sendto(fd, buf, strlen(buf) , 0, (struct sockaddr *)&remaddr, slen)==-1)
-			perror("sendto");
-
-
-
-		else
-		cout << "Sending packet " << i <<" to "<< server <<" port "<< port << endl;
-
-	//	recvlen = recvfrom(fd, buf, BUFLEN, m (struct sockaddr *)&remaddr, &slen;
-	//		if(recvlen >= 0) {
-	//			buf[recvlen] = 0;
-	//	}		printf("received message: \"%s\"|n", buf);
-		}
-	close(fd);
-	}
-
-	return 0;
-
+	return 1;
 }
 
-
+void
+disconn(void)
+{
+	printf("disconn()\n");
+	shutdown(fd, 2);    /* 2 means future sends & receives are disallowed */
+}
